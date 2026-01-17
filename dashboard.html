@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-main: #ffffff;
+            --text-sub: #b0b0b0;
+            --accent: #4a90e2;
+            --danger: #e74c3c;
+        }
+
+        body {
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* グリッドレイアウト */
+        .container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: auto auto 1fr;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            height: calc(100vh - 40px);
+        }
+
+        /* カード共通スタイル */
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        /* 各エリアの配置設定 */
+        .clock-area { grid-column: 1 / -1; text-align: center; padding: 10px; }
+        .weather-today { grid-column: 1 / 2; }
+        .weather-week { grid-column: 2 / 3; }
+        .train-info { grid-column: 3 / 4; }
+        .news-area { grid-column: 1 / 2; grid-row: 3 / 4; }
+        .calendar-area { grid-column: 2 / 4; grid-row: 3 / 4; }
+
+        /* 時計 */
+        #time { font-size: 4rem; font-weight: bold; letter-spacing: 2px; }
+        #date { font-size: 1.5rem; color: var(--text-sub); }
+
+        /* リスト表示共通 (ニュース・電車) */
+        ul { list-style: none; padding: 0; margin: 0; overflow-y: auto; }
+        li { padding: 8px 0; border-bottom: 1px solid #444; font-size: 0.9rem; }
+        li:last-child { border-bottom: none; }
+        li a { color: var(--text-main); text-decoration: none; }
+        li a:hover { text-decoration: underline; }
+        .date-label { font-size: 0.8rem; color: var(--text-sub); margin-right: 8px; }
+        
+        /* 天気 */
+        .weather-main { display: flex; align-items: center; justify-content: space-around; }
+        .temp-big { font-size: 2.5rem; font-weight: bold; }
+        .week-list { display: flex; flex-direction: column; gap: 5px; }
+        .week-item { display: flex; justify-content: space-between; }
+
+        /* カレンダー (iframe) */
+        iframe { width: 100%; height: 100%; border: none; }
+
+        /* 郵便番号入力エリア */
+        .location-input {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .location-input input {
+            background: #333; border: 1px solid #555; color: #fff; padding: 4px 8px; border-radius: 4px; width: 120px;
+        }
+        .location-input button {
+            background: var(--accent); color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer;
+        }
+        .location-input button:hover { opacity: 0.8; }
+
+        /* レスポンシブ対応 */
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto;
+                height: auto;
+            }
+            .clock-area, .weather-today, .weather-week, .train-info, .news-area, .calendar-area {
+                grid-column: 1 / -1;
+                grid-row: auto;
+            }
+            .calendar-area { height: 400px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- 1. デジタル時計 -->
+    <div class="card clock-area">
+        <div id="date">Loading...</div>
+        <div id="time">00:00:00</div>
+    </div>
+
+    <!-- 2. 今日の天気 -->
+    <div class="card weather-today">
+        <h2 id="weather-title">今日の天気 (東京)</h2>
+        <div class="location-input">
+            <input type="text" id="postal-input" placeholder="例: 100-0001">
+            <button onclick="updateLocation()">変更</button>
+        </div>
+        <div id="current-weather" class="weather-main">
+            読み込み中...
+        </div>
+    </div>
+
+    <!-- 3. 週間天気 -->
+    <div class="card weather-week">
+        <h2>週間予報</h2>
+        <div id="weekly-forecast" class="week-list">
+            読み込み中...
+        </div>
+    </div>
+
+    <!-- 4. 電車の遅延情報 -->
+    <div class="card train-info">
+        <h2>運行情報 (関東)</h2>
+        <ul id="train-list">
+            <li>読み込み中...</li>
+        </ul>
+    </div>
+
+    <!-- 5. ニュース -->
+    <div class="card news-area">
+        <h2>最新ニュース</h2>
+        <ul id="news-list">
+            <li>読み込み中...</li>
+        </ul>
+    </div>
+
+    <!-- 6. Googleカレンダー -->
+    <div class="card calendar-area">
+        <h2>カレンダー</h2>
+        <!-- 
+             重要: 自分のカレンダーを表示するには、Googleカレンダー設定から
+             「埋め込みコード」を取得して、以下のsrcを書き換えてください。
+             デフォルトでは日本の祝日カレンダーを表示しています。
+        -->
+        <iframe src="https://calendar.google.com/calendar/embed?height=600&wkst=1&ctz=Asia%2FTokyo&showPrint=0&src=a2FyaWhhdGE1NTI2QGdtYWlsLmNvbQ&src=NGJsZGQ1ZDZla3IxZWtkNmI5cXI0OG8wYmNAZ3JvdXAuY2FsZW5kYXIuZ29vZ2xlLmNvbQ&src=aGFyaXRhNTUyNkBnbWFpbC5jb20&src=amEuamFwYW5lc2UjaG9saWRheUBncm91cC52LmNhbGVuZGFyLmdvb2dsZS5jb20&color=%237986cb&color=%23ad1457&color=%23ef6c00&color=%23f09300" style="border:solid 1px #777" width="800" height="600" frameborder="0" scrolling="no"></iframe>
+    </div>
+</div>
+
+<script>
+    // --- 設定エリア ---
+    // 天気予報の場所 (デフォルト: 東京)
+    let LATITUDE = 35.6895;
+    let LONGITUDE = 139.6917;
+    
+    // ニュースのRSS (Yahooニュース トピックス)
+    const NEWS_RSS = 'https://news.yahoo.co.jp/rss/topics/top-picks.xml';
+    
+    // 運行情報のRSS (Yahoo路線情報 関東)
+    const TRAIN_RSS = 'https://transit.yahoo.co.jp/diainfo/area/4/0.xml';
+
+    // --- 1. 時計機能 ---
+    function updateClock() {
+        const now = new Date();
+        const days = ['日', '月', '火', '水', '木', '金', '土'];
+        
+        const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 (${days[now.getDay()]})`;
+        const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        document.getElementById('date').textContent = dateStr;
+        document.getElementById('time').textContent = timeStr;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // --- 2 & 3. 天気予報 (Open-Meteo API) ---
+    // WMOコードによる天気変換
+    function getWeatherDescription(code) {
+        const codes = {
+            0: '快晴', 1: '晴れ', 2: '一部曇', 3: '曇り',
+            45: '霧', 48: '霧', 51: '霧雨', 53: '霧雨', 55: '霧雨',
+            61: '雨', 63: '雨', 65: '雨', 80: 'にわか雨',
+            71: '雪', 73: '雪', 75: '雪', 95: '雷雨'
+        };
+        return codes[code] || '不明';
+    }
+
+    // 郵便番号から場所を更新
+    async function updateLocation() {
+        const input = document.getElementById('postal-input');
+        const code = input.value.replace(/-/g, '');
+        if (!code) return;
+
+        try {
+            // 1. 郵便番号検索API (zipcloud) で住所を取得
+            const zipRes = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${code}`);
+            const zipData = await zipRes.json();
+
+            if (zipData.results) {
+                const r = zipData.results[0];
+                const address = r.address1 + r.address2 + r.address3;
+
+                // 2. 取得した住所で国土地理院APIを検索
+                const gsiRes = await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(address)}`);
+                const gsiData = await gsiRes.json();
+
+                if (gsiData && gsiData.length > 0) {
+                    const coords = gsiData[0].geometry.coordinates; // [lon, lat]
+                    LONGITUDE = coords[0];
+                    LATITUDE = coords[1];
+                    document.getElementById('weather-title').textContent = `今日の天気 (${r.address1}${r.address2})`;
+                    fetchWeather(); // 天気再取得
+                } else {
+                    alert('座標が見つかりませんでした');
+                }
+            } else {
+                alert('郵便番号が見つかりませんでした');
+            }
+        } catch (e) {
+            console.error('Location Error:', e);
+            alert('検索に失敗しました');
+        }
+    }
+
+    async function fetchWeather() {
+        try {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            // 今日の天気表示
+            const current = data.current_weather;
+            const todayHtml = `
+                <div class="temp-big">${current.temperature}°C</div>
+                <div>
+                    <div>${getWeatherDescription(current.weathercode)}</div>
+                    <div>風速: ${current.windspeed} m/s</div>
+                </div>
+            `;
+            document.getElementById('current-weather').innerHTML = todayHtml;
+
+            // 週間天気表示 (向こう5日分)
+            let weekHtml = '';
+            const daily = data.daily;
+            for (let i = 1; i < 6; i++) { // 0は今日なので1から
+                const date = new Date(daily.time[i]);
+                const dayStr = `${date.getMonth()+1}/${date.getDate()}`;
+                weekHtml += `
+                    <div class="week-item">
+                        <span>${dayStr}</span>
+                        <span>${getWeatherDescription(daily.weathercode[i])}</span>
+                        <span>${daily.temperature_2m_max[i]}° / ${daily.temperature_2m_min[i]}°</span>
+                    </div>
+                `;
+            }
+            document.getElementById('weekly-forecast').innerHTML = weekHtml;
+
+        } catch (e) {
+            console.error('Weather Error:', e);
+            document.getElementById('current-weather').textContent = '取得失敗';
+        }
+    }
+    fetchWeather();
+
+    // --- 共通: RSSを取得してパースする関数 (CORSプロキシ使用) ---
+    async function fetchRSS(rssUrl) {
+        // alloriginsでエラーが出る場合があるため、corsproxy.ioに変更
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(rssUrl)}`;
+        const res = await fetch(proxyUrl);
+        const text = await res.text();
+        
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(text, "text/xml");
+        const items = Array.from(xml.querySelectorAll("item")).map(item => ({
+            title: item.querySelector("title")?.textContent || "",
+            link: item.querySelector("link")?.textContent || "",
+            pubDate: item.querySelector("pubDate")?.textContent || ""
+        }));
+
+        return { items };
+    }
+
+    // --- 4. 運行情報 ---
+    async function fetchTrainInfo() {
+        try {
+            const data = await fetchRSS(TRAIN_RSS);
+            const list = document.getElementById('train-list');
+            list.innerHTML = '';
+
+            if (data.items && data.items.length > 0) {
+                // "平常運転" などのキーワードが含まれるかチェックしてフィルタリングも可能
+                // ここでは最新5件を表示
+                data.items.slice(0, 5).forEach(item => {
+                    const li = document.createElement('li');
+                    // タイトルに路線名や状況が入っていることが多い
+                    li.innerHTML = `<span class="date-label">info</span> ${item.title}`;
+                    list.appendChild(li);
+                });
+            } else {
+                list.innerHTML = '<li>現在、主要な遅延情報はありません。</li>';
+            }
+        } catch (e) {
+            console.error('Train Info Error:', e);
+            document.getElementById('train-list').textContent = '情報の取得に失敗しました';
+        }
+    }
+    fetchTrainInfo();
+
+    // --- 5. ニュース ---
+    async function fetchNews() {
+        try {
+            const data = await fetchRSS(NEWS_RSS);
+            const list = document.getElementById('news-list');
+            list.innerHTML = '';
+
+            if (data.items) {
+                data.items.slice(0, 8).forEach(item => {
+                    const li = document.createElement('li');
+                    const date = new Date(item.pubDate);
+                    const timeStr = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+                    
+                    li.innerHTML = `
+                        <span class="date-label">${timeStr}</span>
+                        <a href="${item.link}" target="_blank">${item.title}</a>
+                    `;
+                    list.appendChild(li);
+                });
+            }
+        } catch (e) {
+            console.error('News Error:', e);
+            document.getElementById('news-list').textContent = 'ニュースの取得に失敗しました';
+        }
+    }
+    fetchNews();
+
+</script>
+</body>
+</html>
