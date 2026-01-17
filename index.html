@@ -123,10 +123,6 @@
     <!-- 2. 今日の天気 -->
     <div class="card weather-today">
         <h2 id="weather-title">今日の天気 (東京)</h2>
-        <div class="location-input">
-            <input type="text" id="postal-input" placeholder="例: 100-0001">
-            <button onclick="updateLocation()">変更</button>
-        </div>
         <div id="current-weather" class="weather-main">
             読み込み中...
         </div>
@@ -140,12 +136,13 @@
         </div>
     </div>
 
-    <!-- 4. 電車の遅延情報 -->
+    <!-- 4. 場所変更-->
     <div class="card train-info">
-        <h2>運行情報 (関東)</h2>
-        <ul id="train-list">
-            <li>読み込み中...</li>
-        </ul>
+        <h2>場所変更</h2>
+        <div class="location-input">
+            <input type="text" id="postal-input" placeholder="例: 100-0001">
+            <button onclick="updateLocation()">変更</button>
+        </div>
     </div>
 
     <!-- 5. ニュース -->
@@ -177,9 +174,6 @@
     // ニュースのRSS (Yahooニュース トピックス)
     const NEWS_RSS = 'https://news.yahoo.co.jp/rss/topics/top-picks.xml';
     
-    // 運行情報のRSS (Yahoo路線情報 関東)
-    const TRAIN_RSS = 'https://transit.yahoo.co.jp/diainfo/area/4/0.xml';
-
     // --- 1. 時計機能 ---
     function updateClock() {
         const now = new Date();
@@ -260,17 +254,24 @@
             `;
             document.getElementById('current-weather').innerHTML = todayHtml;
 
-            // 週間天気表示 (向こう5日分)
+            // 週間天気表示 (向こう6日分)
             let weekHtml = '';
             const daily = data.daily;
-            for (let i = 1; i < 6; i++) { // 0は今日なので1から
+            for (let i = 1; i < 7; i++) { // 0は今日なので1から
                 const date = new Date(daily.time[i]);
-                const dayStr = `${date.getMonth()+1}/${date.getDate()}`;
+                const daysOfWeek = ['日', '月', '火', '水', '木', '金', '土'];
+                const dayIndex = date.getDay();
+                let dayClass = '';
+                if (dayIndex === 0) { // 日曜日
+                    dayClass = 'style="color: var(--danger);"';
+                } else if (dayIndex === 6) { // 土曜日
+                    dayClass = 'style="color: var(--accent);"';
+                }
                 weekHtml += `
                     <div class="week-item">
-                        <span>${dayStr}</span>
-                        <span>${getWeatherDescription(daily.weathercode[i])}</span>
-                        <span>${daily.temperature_2m_max[i]}° / ${daily.temperature_2m_min[i]}°</span>
+                        <span ${dayClass}>${date.getMonth()+1}/${date.getDate()} (${daysOfWeek[dayIndex]})</span>
+                        <span style="flex-grow: 1; text-align: center;">${getWeatherDescription(daily.weathercode[i])}</span>
+                        <span style="width: 80px; text-align: right;">${daily.temperature_2m_max[i].toFixed(0)}° / ${daily.temperature_2m_min[i].toFixed(0)}°</span>
                     </div>
                 `;
             }
@@ -286,7 +287,7 @@
     // --- 共通: RSSを取得してパースする関数 (CORSプロキシ使用) ---
     async function fetchRSS(rssUrl) {
         // alloriginsでエラーが出る場合があるため、corsproxy.ioに変更
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(rssUrl)}`;
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(rssUrl)}`;
         const res = await fetch(proxyUrl);
         const text = await res.text();
         
@@ -300,32 +301,6 @@
 
         return { items };
     }
-
-    // --- 4. 運行情報 ---
-    async function fetchTrainInfo() {
-        try {
-            const data = await fetchRSS(TRAIN_RSS);
-            const list = document.getElementById('train-list');
-            list.innerHTML = '';
-
-            if (data.items && data.items.length > 0) {
-                // "平常運転" などのキーワードが含まれるかチェックしてフィルタリングも可能
-                // ここでは最新5件を表示
-                data.items.slice(0, 5).forEach(item => {
-                    const li = document.createElement('li');
-                    // タイトルに路線名や状況が入っていることが多い
-                    li.innerHTML = `<span class="date-label">info</span> ${item.title}`;
-                    list.appendChild(li);
-                });
-            } else {
-                list.innerHTML = '<li>現在、主要な遅延情報はありません。</li>';
-            }
-        } catch (e) {
-            console.error('Train Info Error:', e);
-            document.getElementById('train-list').textContent = '情報の取得に失敗しました';
-        }
-    }
-    fetchTrainInfo();
 
     // --- 5. ニュース ---
     async function fetchNews() {
